@@ -1,12 +1,11 @@
 """Database tests. Each test gets its own throw-away Postgres schema; skipped if Postgres is down
 (start it with `docker compose up -d`)."""
-import uuid
 from pathlib import Path
 
 import psycopg
 import pytest
 
-from solution.db import PiiKeyMismatch, connect, init_schema
+from solution.db import PiiKeyMismatch, init_schema
 from solution.leads import LeadBook, discover_lead_files, ingest_file, load_schemas
 from solution.pii import Pii
 from solution.store import (
@@ -18,19 +17,6 @@ SCHEMAS = load_schemas(ROOT / "assignment-a-data" / "schemas")
 MOTOR = SCHEMAS["motor_renewal"]
 PII = Pii(b"test-master-key")
 HEADER = "customer_name,phone,policy_number,policy_expiry,premium_amount,preferred_language\n"
-
-
-@pytest.fixture
-def db():
-    name = f"t_{uuid.uuid4().hex[:12]}"
-    try:
-        conn = connect(schema=name)
-    except psycopg.OperationalError as e:
-        pytest.skip(f"Postgres not reachable ({e.__class__.__name__}); run `docker compose up -d`")
-    init_schema(conn, PII)
-    yield conn
-    conn.execute(f'DROP SCHEMA "{name}" CASCADE')
-    conn.close()
 
 
 def csv_file(tmp_path, name, text, wf="motor_renewal"):

@@ -72,6 +72,14 @@ CREATE TABLE IF NOT EXISTS events (
     ingested_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- malformed event lines: WHERE they are, never WHAT they say (a truncated line may hold a phone number)
+CREATE TABLE IF NOT EXISTS malformed_lines (
+    drop_name text NOT NULL,
+    path      text NOT NULL,
+    line_no   int  NOT NULL,
+    PRIMARY KEY (drop_name, path, line_no)
+);
+
 CREATE TABLE IF NOT EXISTS meta (key text PRIMARY KEY, value text NOT NULL);
 
 CREATE OR REPLACE FUNCTION forbid_change() RETURNS trigger LANGUAGE plpgsql AS $$

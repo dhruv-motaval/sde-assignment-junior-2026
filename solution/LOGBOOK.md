@@ -34,8 +34,8 @@ Each step doc in `docs/NN-name.md` has these sections:
 | - | 2026-11-13 | Created private GitHub repo and pushed steps 1-2 | - | done |
 | 3 | 2026-11-13 | Lead ingestion in memory: CSV reading, header mapping, validation, rejections, merging (22 tests) | [03](docs/03-lead-ingestion.md) | done |
 | 4 | 2026-11-13 | PostgreSQL schema, PII protection (HMAC phone, Fernet name), append-only ledger, leads saved to DB (19 new tests) | [04](docs/04-database-and-pii.md) | done |
-| 5 | | Event ingestion: malformed / duplicate handling, idempotent file tracking | | next |
-| 6 | | Report derivation: calls, effective disposition, buckets, five output files | | |
+| 5 | 2026-11-13 | Event ingestion: parse, malformed/duplicate handling, COPY into the ledger, idempotent per file (34 new tests) | [05](docs/05-event-ingestion.md) | done |
+| 6 | | Report derivation: calls, effective disposition, buckets, five output files | | next |
 | 7 | | Idempotency + drop-split equivalence tests; large-scale timing | | |
 | 8 | | Fill in `SUBMISSION.md` and `AI_USAGE.md` | | |
 
@@ -62,6 +62,11 @@ Copied into `SUBMISSION.md` at the end.
 | Full phone | not stored (HMAC + last 4 only) | reports only need masked phone | store encrypted too | 4 |
 | Workflow-specific fields | `attributes jsonb` | one table, SQL merge with `||` | table per workflow / EAV | 4 |
 | Same file path, new content | refuse (`FileContentChanged`) | avoid silent double counting | re-ingest anyway | 4 |
+| Event with missing/bad time or type | counted malformed, skipped | ledger needs a real time and type | placeholder time / fail file | 5 |
+| Malformed lines | keep file + line number only | no PII in the database | count only / raw text | 5 |
+| Event load method | bulk COPY per file | speed for 600k events | row-by-row insert | 5 |
+| Event with invalid phone | stored, NULL hash, orphan at report time | spec: events link by normalised phone | drop at ingest | 5 |
+| Same event_id, different content | first copy wins | spec: skip later duplicates | last wins | 5 |
 
 ## AI usage notes (for `AI_USAGE.md`)
 
@@ -75,4 +80,5 @@ Copied into `SUBMISSION.md` at the end.
   generated CSVs to confirm valid/invalid counts look plausible (see step 2 doc).
 - Step 3: Claude wrote `leads.py` and its tests. Four open design questions were put to the user, who chose the recommended option for all four. Environment issue: pytest temp dir `PermissionError`, fixed with `--basetemp` in `pytest.ini`.
 - Step 4: Claude wrote `pii.py`, `db.py`, `store.py` and 19 tests. The user chose Postgres against Claude's SQLite recommendation; Docker Desktop was not running, so Claude launched it with the user's permission and started the compose Postgres. Claude's first draft of one test asserted `[None] * 3` results for a drop that has 4 files; spotted on review before the first run and fixed.
+- Step 5: Claude wrote `events.py`, the event part of `store.py`, and 34 tests. Three design questions were put to the user, who chose the recommended option each time. Where the AI was wrong: its first real-data test assumed every non-override event has a valid phone; the run showed 152 events with unparseable phones (the generator emits them on purpose). The code was right and the assertion was wrong; the finding is now documented and tested.
 - Things still to understand line by line before the interview: the regexes in `parsers.py`.
