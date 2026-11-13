@@ -80,6 +80,15 @@ CREATE TABLE IF NOT EXISTS malformed_lines (
     PRIMARY KEY (drop_name, path, line_no)
 );
 
+-- disposition catalogue (from schemas/dispositions.csv); reloaded idempotently on every ingest/report
+CREATE TABLE IF NOT EXISTS dispositions (
+    workflow_id text NOT NULL,
+    code        text NOT NULL,
+    is_terminal boolean NOT NULL,
+    is_success  boolean NOT NULL,
+    PRIMARY KEY (workflow_id, code)
+);
+
 CREATE TABLE IF NOT EXISTS meta (key text PRIMARY KEY, value text NOT NULL);
 
 CREATE OR REPLACE FUNCTION forbid_change() RETURNS trigger LANGUAGE plpgsql AS $$

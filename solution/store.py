@@ -209,3 +209,18 @@ def ingest_drop(conn: psycopg.Connection, pii: Pii, schemas: dict[str, Schema], 
     """Leads first, then events (order does not affect results: linking happens at report time)."""
     return {"leads": ingest_lead_drop(conn, pii, schemas, drop_dir),
             "events": ingest_event_drop(conn, pii, drop_dir)}
+
+
+def load_dispositions(conn: psycopg.Connection, csv_path: str | Path) -> int:
+    """Upsert the disposition catalogue. Safe to run every time (idempotent)."""
+    import csv
+    with open(csv_path, encoding="utf-8-sig", newline="") as fh:
+        rows = [(r["workflow_id"].strip(), r["code"].strip(),
+                 r["is_terminal"].strip().lower() == "true", r["is_success"].strip().lower() == "true")
+                for r in csv.DictReader(fh)]
+    with conn.transaction():
+        for r in rows:
+            conn.execute("""INSERT INTO dispositions VALUES (%s, %s, %s, %s)
+                            ON CONFLICT (workflow_id, code) DO UPDATE
+                            SET is_terminal = EXCLUDED.is_terminal, is_success = EXCLUDED.is_success""", r)
+    return len(rows)
