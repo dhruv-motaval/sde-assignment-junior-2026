@@ -15,12 +15,23 @@ Each step doc in `docs/NN-name.md` has these sections:
 4. **Findings / results**: numbers, surprises, test output.
 5. **Open questions**: anything the spec left ambiguous (also copied to the table below).
 
+## GitHub
+
+- Private repo: https://github.com/dhruv-motaval/sde-assignment-junior-2026 (`origin`).
+  The assignment's own repo is kept as the `upstream` remote and is never pushed to.
+- Routine: at the end of every step, update this logbook and the step doc, then commit and
+  push to `origin main`. One commit per step, message says which step.
+- Never commit `data/`, `data_large/`, `.env`, databases or the PII key file (`.gitignore`
+  covers the first four; the key file name will be added when step 4 creates it).
+- Before submitting: give the reviewers read access (see the main README) and email the link.
+
 ## Log
 
 | # | Date | Step | Doc | Status |
 |---|------|------|-----|--------|
 | 1 | 2026-11-13 | Chose Assignment A; cloned assignment repo; generated seed-42 data; inspected it | [01](docs/01-setup-and-data-inspection.md) | done |
 | 2 | 2026-11-13 | Pure value parsers (header, phone, date, decimal, enum, timestamp) + 72 unit tests | [02](docs/02-value-parsers.md) | done |
+| - | 2026-11-13 | Created private GitHub repo and pushed steps 1-2 | - | done |
 | 3 | | Lead ingestion: CSV reading, header mapping, validation, rejections, merging | | next |
 | 4 | | Database schema, PII protection (HMAC phone, encrypted name), append-only ledger | | |
 | 5 | | Event ingestion: malformed / duplicate handling, idempotent file tracking | | |
