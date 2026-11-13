@@ -21,7 +21,7 @@ Whole suite: **113 passed, 0 skipped**.
 | Table | Purpose | Key points |
 |---|---|---|
 | `leads` | One row per `(workflow, phone)` | `phone_hash` (HMAC, bytea), `phone_last4`, permanent `batch_id`, `external_ref`, `pii` (jsonb of encrypted fields), `attributes` (jsonb of other fields). `UNIQUE(workflow_id, phone_hash)` is the lead identity. |
-| `rejections` | Rejected lead rows | `workflow_id, batch_id, row_number, reason`. No PII, primary key on those four. |
+| `rejections` | Rejected lead rows | `workflow_id, batch_id, row_number, reason` (+ source drop/file added in step 8, which is the primary key with the row number). No PII. |
 | `events` | The interaction ledger | `event_id` primary key = free dedupe. `phone_hash` is NULL for overrides. **Triggers block UPDATE, DELETE and TRUNCATE.** Filled in step 5. |
 | `ingested_files` | Which input files were fully applied, plus their counters | Primary key `(drop_name, path)`; stores a SHA-256 of the file. |
 | `meta` | Holds a fingerprint of the PII key | Detects a wrong or lost key. |

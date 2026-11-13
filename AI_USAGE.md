@@ -14,7 +14,7 @@ Almost everything, in a conversation with the agent, one part at a time:
 - Inspecting the generated data before any code was written.
 - **Writing the code:** parsers, lead ingestion, PostgreSQL schema and PII protection, event ingestion, report
   derivation and the five output files, the command line, the bulk-loading speed-up, and `reset`.
-- **Writing the tests** (183), including an independent re-implementation over the raw files used as an oracle.
+- **Writing the tests** (212), including an independent re-implementation over the raw files used as an oracle.
 - Benchmarking on the large dataset, starting Docker/Postgres, running a fresh-clone check, and the git commits and
   pushes to my GitHub repo.
 - Writing the step-by-step docs in `solution/docs/`, `solution/LOGBOOK.md`, this file and `SUBMISSION.md`.
@@ -55,12 +55,19 @@ Found by running things; each was fixed:
 5. **Tooling slips.** A `\n` inside a print message was written as a real newline (SyntaxError), a wrong-string edit was
    rejected, a shell heredoc failed once, and an old crash-recovery test targeted a function that the speed-up removed
    (it was rewritten). All were caught by running the code or the tests.
-6. **A trade-off, not an error.** The agent recommended SQLite for simplicity (no Docker for a reviewer); I chose
+6. **Crashes on hostile input.** The probing above showed my code crashed a whole file on a NUL character, `NaN`, year
+   0001/9999 timestamps, an invalid UTF-8 byte and a 1 MB cell, silently lost the first event of a BOM-prefixed file, and
+   exited 0 with no output for a mistyped path. None of this appeared in the generated data, so the original tests never
+   saw it. Fixed in `solution/docs/08-edge-case-hardening.md`. While fixing it a literal NUL byte also ended up inside a
+   source file through a scripting slip; the next test run caught it.
+7. **A trade-off, not an error.** The agent recommended SQLite for simplicity (no Docker for a reviewer); I chose
    PostgreSQL instead. This adds a Docker requirement for anyone running the project; it is noted as a risk.
 
 ## How I verified AI-generated code
-- **Tests:** 183 automated tests (unit, database, and end to end), run repeatedly during the work and on a fresh clone with
-  a different data seed (7): 183 passed.
+- **Tests:** 212 automated tests (unit, database, and end to end), run repeatedly during the work. The first 183 also
+  passed on five other data seeds and on a fresh clone with seed 7.
+- **Adversarial probing before submitting:** about 50 hostile inputs (NUL bytes, `NaN`, year 0001/9999, BOM, bad bytes,
+  huge cells, mistyped paths, database down) were fed to the code; every crash found was fixed and covered by a test.
 - **Independent oracle:** a second, from-scratch implementation inside the tests reads the raw files without the database
   and must produce identical reports and counters. Caveat: the same AI wrote both, so a shared misreading of the spec would
   not be caught.

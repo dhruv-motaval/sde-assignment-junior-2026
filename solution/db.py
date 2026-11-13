@@ -55,7 +55,9 @@ CREATE TABLE IF NOT EXISTS rejections (          -- no PII: reason + position on
     batch_id    text NOT NULL,
     row_number  int  NOT NULL,
     reason      text NOT NULL,
-    PRIMARY KEY (workflow_id, batch_id, row_number)
+    drop_name   text NOT NULL,                   -- source file, so two drops may reuse a batch name
+    path        text NOT NULL,
+    PRIMARY KEY (drop_name, path, row_number)
 );
 
 -- the interaction ledger: insert-only (enforced by triggers below)
@@ -110,7 +112,7 @@ def connect(url: str | None = None, schema: str | None = None) -> psycopg.Connec
 
     `schema` (used by tests) puts all tables in their own Postgres schema so tests never touch real data.
     """
-    conn = psycopg.connect(url or os.environ.get("DATABASE_URL", DEFAULT_URL), autocommit=True)
+    conn = psycopg.connect(url or os.environ.get("DATABASE_URL", DEFAULT_URL), autocommit=True, connect_timeout=10)
     if schema:
         conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
         conn.execute(f'SET search_path TO "{schema}"')

@@ -93,10 +93,16 @@ def parse_enum(raw: str, values: list[str]) -> str | None:
 def parse_timestamp(s: str) -> datetime:
     """'...Z', '...+05:30' or naive ('2026-10-03 10:01:00', naive means IST) -> aware UTC datetime.
 
-    Raises ValueError on garbage. Always compare/sort the returned datetimes, never the raw
+    Raises ValueError on garbage or out-of-range values. Always compare/sort the returned datetimes, never the raw
     strings: mixed Z / offset / naive strings do not sort chronologically.
     """
-    d = datetime.fromisoformat(s.strip())
+    s = s.strip()
+    if s[-1:] == "z":  # accept a lower-case 'z' too
+        s = s[:-1] + "Z"
+    d = datetime.fromisoformat(s)
     if d.tzinfo is None:
         d = d.replace(tzinfo=IST)
-    return d.astimezone(timezone.utc)
+    try:
+        return d.astimezone(timezone.utc)
+    except OverflowError as e:  # e.g. year 0001 in IST has no UTC equivalent
+        raise ValueError(f"timestamp out of range: {s}") from e

@@ -20,6 +20,9 @@ from .parsers import (
 )
 
 
+NUL = chr(0)  # PostgreSQL text cannot hold NUL
+csv.field_size_limit(1 << 24)  # default 128 KB makes one huge cell crash the whole file
+
 # --- schema ------------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -85,8 +88,9 @@ def read_rows(path: str | Path, schema: Schema):
     row_number counts non-blank data rows from 1 (header and blank rows are not counted).
     utf-8-sig strips an Excel BOM that would otherwise corrupt the first header name.
     """
-    with open(path, encoding="utf-8-sig", newline="") as fh:
-        reader = csv.reader(fh)
+    # errors="replace": one bad byte must not crash the file; NUL cannot be stored by PostgreSQL, so drop it
+    with open(path, encoding="utf-8-sig", errors="replace", newline="") as fh:
+        reader = csv.reader(line.replace(NUL, "") for line in fh)
         header = next(reader, None)
         if header is None:
             return
@@ -224,5 +228,6 @@ def discover_lead_files(drop_dir: str | Path, schemas: dict[str, Schema]) -> lis
         if wf_dir.name not in schemas:
             warnings.warn(f"no schema for workflow {wf_dir.name!r}; skipping {wf_dir}")
             continue
-        out += [(wf_dir.name, f) for f in sorted(wf_dir.glob("*.csv"), key=lambda p: p.name)]
+        out += [(wf_dir.name, f) for f in sorted((p for p in wf_dir.glob("*") if p.suffix.lower() == ".csv"),
+                                             key=lambda p: p.name)]
     return out

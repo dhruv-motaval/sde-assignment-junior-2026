@@ -21,11 +21,13 @@ python -m solution ingest data/drop_1
 python -m solution ingest data/drop_2
 python -m solution report --out reports/               # writes the five files
 
-pytest                                                 # 183 tests, ~20 s, needs the Postgres container
+pytest                                                 # 212 tests, ~30 s, needs the Postgres container
 
 python -m solution reset --yes                         # empty the database BEFORE ingesting a different seed
 ```
 
+- The commands wait up to 30 s for Postgres to start (`--wait N` to change). Expected problems (wrong path, database
+  down, wrong key, changed file) end with one `error: ...` line and exit code 1 or 2, never a traceback.
 - Database: `$DATABASE_URL`, default `postgresql://au:au_local_only@localhost:5432/au_assignment`
   (the `docker-compose.yml` credentials).
 - PII key: `$AU_PII_KEY`, otherwise `solution/.pii_key` is created on first use (git-ignored). **Keep it with
@@ -33,7 +35,7 @@ python -m solution reset --yes                         # empty the database BEFO
 - Tests use throw-away Postgres schemas and never touch real data. If Postgres is down, database tests
   skip with a hint. Real-data tests use `data/` if it exists.
 - Verified from a fresh clone with a different seed (7): setup, ingest, report, re-ingest, `pytest`
-  (183 passed), `reset`.
+  (212 passed), `reset`.
 
 ## Design
 **Idea:** store raw facts, derive everything else. Leads go into a table; every event goes into an
@@ -114,12 +116,20 @@ More detail, and why each step was built this way with the alternatives, is in
 | `last_call_at` to the second, `+05:30` | spec example | include fractions |
 | Lead loading: staging table + one UPDATE + one INSERT per file | 101 s to 13 s on large data | `executemany`; leave as is |
 | `reset --yes` drops our tables, keeps the key file | TRUNCATE is blocked by the append-only trigger | truncate; docs only |
+| Event line the database cannot store (NUL in a string, `NaN`/`Infinity` or invalid Unicode in the payload, a timestamp that cannot convert to UTC/IST): counted malformed | one bad line must not crash or block a file; a time that cannot become IST would crash `report` later | fail the file; sanitise the value |
+| Lead CSV: strip NUL characters, replace invalid UTF-8 bytes, accept cells up to 16 MB, accept `.CSV`/`.JSONL` in any case | a bad byte must not lose a whole file of leads | crash; reject the file |
+| Lower-case `z` timestamps accepted; a UTF-8 BOM at the start of an event file is ignored | otherwise the first event is silently lost | treat as malformed |
+| `rejections` keyed by source file, not only `(workflow, batch, row)` | two drops may reuse a batch name; a duplicate key would crash ingest | fail on duplicate batch names |
+| Excel-damaged phones (`9876543210.0`, `9.87654321E9`) follow the spec's exact rule (strip non-digits, then validate) | the grader applies the same rule | guess the intent |
 
 ## Failure modes considered
 - **Bad lead rows:** missing/invalid fields are rejected with one reason (schema order) or become null + warning.
   Blank rows are skipped and not counted; short rows, BOM, reordered/renamed/extra columns are handled.
 - **Bad event lines:** malformed lines are counted and located (file + line); duplicates, including across
   drops and within a file, are counted and skipped (first copy wins).
+- **Hostile input (found by probing, now tested):** NUL characters, `NaN`/`Infinity`, invalid Unicode, extreme
+  timestamps, a BOM, bad bytes, a 1 MB cell, CRLF, upper-case extensions, a mistyped drop path, Postgres not up yet.
+  One bad record never crashes or blocks the rest of a file (see `solution/docs/08-edge-case-hardening.md`).
 - **Late data:** events before their lead are kept and link later; overrides link through `call_id`.
 - **Re-runs:** a file already ingested is skipped; counters do not move. A changed file under the same name is
   refused (`FileContentChanged`).
@@ -129,14 +139,16 @@ More detail, and why each step was built this way with the alternatives, is in
 - **Append-only ledger:** the database itself rejects UPDATE / DELETE / TRUNCATE on `events`.
 - **Not handled / known limits:**
   - One writer at a time. Two parallel ingests could race on the lead merge.
-  - A non-UTF-8 lead CSV raises an error (event files tolerate bad bytes per line).
+  - Everything was run on Windows only; Linux/macOS and Python 3.11 are untested.
+  - A lead CSV with an invalid UTF-8 byte is read with a replacement character (a name may differ from the file).
   - `report` loads every event into memory (fine for ~600k, not for months of 100k leads/day).
   - No key rotation. The key lives next to the code; production would use a KMS.
   - Docker/Postgres must be running; there is no SQLite fallback.
   - If the same `call_id` appears with two different leads' phones, only the initiated event's lead owns the call.
 
 ## Testing
-**183 tests**, ~20 s, pass on a fresh clone with a different seed.
+**212 tests**, ~30 s. The 183 core tests also pass on five other data seeds (1, 2, 3, 99, 2026) and on a fresh clone
+with seed 7; the 29 edge-case tests were added afterwards.
 - **Parsers** (72): all six phone formats, invalid phones, dates incl. impossible and day-first, money prefixes
   and `NaN`/`Infinity`, enum, header normalisation, timestamps in all three forms (including a case where string
   order is wrong but datetime order is right).
@@ -152,7 +164,10 @@ More detail, and why each step was built this way with the alternatives, is in
   format, CLI, load-order independence, and an **independent oracle** (a from-scratch implementation over the raw
   files with no database) that matches `lead_report`, `daily_overview`, `batch_summary` and the orphan/unknown
   counts exactly.
-- **Not tested:** parallel ingest, non-UTF-8 CSVs, other Postgres versions, Python 3.11 specifically (only
+- **Edge cases** (29): NUL, `NaN`, lone surrogates, extreme timestamps, BOM, bad bytes, 1 MB cell, CRLF, quoted
+  multi-line cells, upper-case extensions, same batch name in two drops, empty database report, mistyped drop
+  path, unreachable database, trailing-slash path.
+- **Not tested:** parallel ingest, other Postgres versions, Linux/macOS (Windows only), Python 3.11 specifically (only
   3.14.4 was run), and any hidden-grader expectations. The oracle was written by the same author as the pipeline,
   so a shared misreading of the spec would not be caught.
 
@@ -169,6 +184,8 @@ run takes about 1.7 s.
 
 - Before the staging-table change the large run took 152 s (leads 101 s, events 39 s, report 11 s).
   Re-ingesting a drop is 0.9 s because every file is skipped.
+- Load order does not matter even at scale: drop_1 then drop_2 (72 s) and events-first-newest-first then leads (77 s)
+  give byte-identical reports; re-ingesting all 133 files skips every one.
 - Row accounting holds at both scales, e.g. large: 143,990 lead rows = 7,097 rejected + 3,990 merged + 132,903
   new; 632,602 event lines = 631 malformed + 18,490 duplicates + 613,481 stored.
 - **Surprising in the data:** (1) about 150 stored events have unusable phones (`N/A`, landlines, 9-digit, a US
@@ -190,7 +207,8 @@ parallel ingest. Full note: [`solution/docs/07-speed-reset-and-production.md`](s
 ## If I had another day
 1. Work through every module with [`solution/docs/CODE_GUIDE.md`](solution/docs/CODE_GUIDE.md) (the one file that
    explains the code and where to change it) and try its "where to edit" changes.
-2. Re-run the load-order and idempotency checks at large scale, and on Python 3.11.
+2. Run everything on Linux/macOS and on Python 3.11 (load-order independence and idempotency are already
+   verified at large scale: reports byte-identical).
 3. Move report aggregation into SQL (incremental by date) so it scales past memory.
 4. Speed up event loading (parallel workers per file), now the slowest stage.
 5. A SQLite fallback so a reviewer without Docker can run it; a lock for parallel ingest; PII key rotation.

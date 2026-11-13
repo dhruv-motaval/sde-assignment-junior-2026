@@ -10,7 +10,7 @@ from pathlib import Path
 
 import psycopg
 
-from .events import parse_event_line
+from .events import parse_event_line, payload_text
 from .leads import FileResult, Schema, apply_defaults, discover_lead_files, evaluate_row, read_rows
 from .pii import Pii
 
@@ -138,8 +138,9 @@ def ingest_lead_file(conn: psycopg.Connection, pii: Pii, schema: Schema, path: P
 
     with conn.transaction():  # rejections + leads + the ingested_files row commit together, or none do
         with conn.cursor() as cur:
-            cur.executemany("INSERT INTO rejections VALUES (%s, %s, %s, %s)",
-                            [(res.workflow_id, res.batch_id, n, r) for n, r in res.rejections])
+            cur.executemany("INSERT INTO rejections (workflow_id, batch_id, row_number, reason, drop_name, path) "
+                            "VALUES (%s, %s, %s, %s, %s, %s)",
+                            [(res.workflow_id, res.batch_id, n, r, drop_name, rel_path) for n, r in res.rejections])
             cur.execute(_STAGE_DDL)
             with cur.copy("COPY _stage FROM STDIN") as cp:
                 for row in staged:
@@ -188,7 +189,7 @@ def _flush_events(conn: psycopg.Connection, pii: Pii, chunk: list, source: str, 
         for ev, n in new:
             cp.write_row((ev.event_id, ev.event_type, ev.workflow_id, ev.call_id, ev.occurred_at,
                           pii.phone_hash(ev.phone) if ev.phone else None,
-                          json.dumps(ev.payload), source, n))
+                          payload_text(ev.payload), source, n))
     res.inserted += len(new)
     chunk.clear()
 
@@ -208,8 +209,9 @@ def ingest_event_file(conn: psycopg.Connection, pii: Pii, path: Path, drop_name:
     res, seen, chunk = EventFileResult(), set(), []
     source = f"{drop_name}/{rel_path}"
     with conn.transaction():
-        # errors="replace": a stray bad byte makes that one line malformed instead of crashing the file
-        with open(path, encoding="utf-8", errors="replace") as fh:
+        # utf-8-sig drops a BOM (else the first event would be lost); errors="replace": a stray bad byte
+        # makes that one line malformed instead of crashing the whole file
+        with open(path, encoding="utf-8-sig", errors="replace") as fh:
             for line_no, line in enumerate(fh, 1):
                 if not line.strip():
                     continue
@@ -236,7 +238,7 @@ def ingest_event_file(conn: psycopg.Connection, pii: Pii, path: Path, drop_name:
 
 def ingest_event_drop(conn: psycopg.Connection, pii: Pii, drop_dir: str | Path) -> list[EventFileResult | None]:
     drop_dir = Path(drop_dir)
-    files = sorted((drop_dir / "events").glob("*.jsonl"), key=lambda p: p.name)
+    files = sorted((p for p in (drop_dir / "events").glob("*") if p.suffix.lower() == ".jsonl"), key=lambda p: p.name)
     return [ingest_event_file(conn, pii, p, drop_dir.name, p.relative_to(drop_dir).as_posix()) for p in files]
 
 

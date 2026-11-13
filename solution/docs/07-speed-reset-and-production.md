@@ -137,6 +137,6 @@ part that does not scale as written.
 ## Limits, honestly
 
 - Timings are from one machine, one run each, with Docker on the same machine.
-- Only drop_1-then-drop_2 was run at large scale; the load-order independence and idempotency tests
+- (Resolved in step 8: load-order independence and idempotency were later verified at large scale.) Earlier note: the load-order independence and idempotency tests
   run on the small data set only.
 - Event loading is the slowest stage and was not optimised in this step.

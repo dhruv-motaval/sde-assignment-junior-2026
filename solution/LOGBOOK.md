@@ -41,7 +41,8 @@ Each step doc in `docs/NN-name.md` has these sections:
 | 6 | 2026-11-13 | Reports: derive calls / effective disposition / buckets, five output files, CLI (32 new tests incl. independent oracle) | [06](docs/06-reports.md) | done |
 | 7 | 2026-11-13 | Large-scale run: 152 s to 66.8 s via staging-table lead loading; `reset --yes`; production note (183 tests) | [07](docs/07-speed-reset-and-production.md) | done |
 | 8 | 2026-11-13 | Fresh-clone verification (seed 7), `SUBMISSION.md`, `AI_USAGE.md`, code guide | [CODE_GUIDE](docs/CODE_GUIDE.md) | done |
-| - | | Reviewer access + emailing the link (user does this) | - | pending |
+| 9 | 2026-11-13 | Edge-case hardening: 5 more seeds, ~50 adversarial probes, large-scale order independence, 29 new tests (212 total) | [08](docs/08-edge-case-hardening.md) | done |
+| - | | Paste repo link in the submission form (repo is public) | - | pending |
 
 **Time spent (user's own estimate, in `SUBMISSION.md`):** about 1.5 h of the user's own time; code written by AI.
 
