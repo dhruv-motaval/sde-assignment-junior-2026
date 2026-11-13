@@ -32,8 +32,8 @@ Each step doc in `docs/NN-name.md` has these sections:
 | 1 | 2026-11-13 | Chose Assignment A; cloned assignment repo; generated seed-42 data; inspected it | [01](docs/01-setup-and-data-inspection.md) | done |
 | 2 | 2026-11-13 | Pure value parsers (header, phone, date, decimal, enum, timestamp) + 72 unit tests | [02](docs/02-value-parsers.md) | done |
 | - | 2026-11-13 | Created private GitHub repo and pushed steps 1-2 | - | done |
-| 3 | | Lead ingestion: CSV reading, header mapping, validation, rejections, merging | | next |
-| 4 | | Database schema, PII protection (HMAC phone, encrypted name), append-only ledger | | |
+| 3 | 2026-11-13 | Lead ingestion in memory: CSV reading, header mapping, validation, rejections, merging (22 tests) | [03](docs/03-lead-ingestion.md) | done |
+| 4 | | Database schema, PII protection (HMAC phone, encrypted name), append-only ledger | | next |
 | 5 | | Event ingestion: malformed / duplicate handling, idempotent file tracking | | |
 | 6 | | Report derivation: calls, effective disposition, buckets, five output files | | |
 | 7 | | Idempotency + drop-split equivalence tests; large-scale timing | | |
@@ -51,6 +51,11 @@ Copied into `SUBMISSION.md` at the end.
 | Day/month with 1 digit (`1/2/2026`) | accepted | `strptime` accepts it, so a reference built on it would too | strict 2-digit only | 2 |
 | Header normalisation order | lower, trim, then collapse `_`/spaces (spec order) | Literal reading of the spec | collapse then trim | 2 |
 | Bad event timestamp | `parse_timestamp` raises `ValueError`; caller decides | Spec does not say what to do | silently treat as malformed | 2 |
+| Two columns match one field | first column wins | deterministic, simplest | first non-empty / reject file | 3 |
+| Required non-phone field invalid | reject `invalid_<field>` | consistent with `invalid_phone` | treat as missing | 3 |
+| Folder with no schema | skip with warning | one bad folder must not stop the drop | fail ingest | 3 |
+| Defaults | applied on save | same result as at the end; stored data is complete | apply at read | 3 |
+| Warnings on merged rows | counted | merged rows are valid, not rejected | count only new leads | 3 |
 
 ## AI usage notes (for `AI_USAGE.md`)
 
@@ -62,4 +67,5 @@ Copied into `SUBMISSION.md` at the end.
   test example was wrong.
 - **How it was verified:** 72 unit tests, plus running every parser over every cell of the
   generated CSVs to confirm valid/invalid counts look plausible (see step 2 doc).
+- Step 3: Claude wrote `leads.py` and its tests. Four open design questions were put to the user, who chose the recommended option for all four. Environment issue: pytest temp dir `PermissionError`, fixed with `--basetemp` in `pytest.ini`.
 - Things still to understand line by line before the interview: the regexes in `parsers.py`.
