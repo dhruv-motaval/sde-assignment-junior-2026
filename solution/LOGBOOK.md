@@ -36,8 +36,8 @@ Each step doc in `docs/NN-name.md` has these sections:
 | 4 | 2026-11-13 | PostgreSQL schema, PII protection (HMAC phone, Fernet name), append-only ledger, leads saved to DB (19 new tests) | [04](docs/04-database-and-pii.md) | done |
 | 5 | 2026-11-13 | Event ingestion: parse, malformed/duplicate handling, COPY into the ledger, idempotent per file (34 new tests) | [05](docs/05-event-ingestion.md) | done |
 | 6 | 2026-11-13 | Reports: derive calls / effective disposition / buckets, five output files, CLI (32 new tests incl. independent oracle) | [06](docs/06-reports.md) | done |
-| 7 | | `reset` command, large-scale timing and batching, production note | | next |
-| 8 | | Fill in `SUBMISSION.md` and `AI_USAGE.md` | | |
+| 7 | 2026-11-13 | Large-scale run: 152 s to 66.8 s via staging-table lead loading; `reset --yes`; production note (183 tests) | [07](docs/07-speed-reset-and-production.md) | done |
+| 8 | | Fill in `SUBMISSION.md` and `AI_USAGE.md`, README run commands, reviewer access | | next |
 
 **Time spent so far (fill in honestly, it goes in `SUBMISSION.md`):** _____ h
 
@@ -76,6 +76,9 @@ Copied into `SUBMISSION.md` at the end.
 | rejections_by_reason | only reasons that occurred | natural Counter output | include all possible reasons with 0 | 6 |
 | Call with several call.initiated | earliest one | simplest deterministic rule | latest | 6 |
 | Linked event whose call has no linked initiated | not an orphan, creates no call | it did link by phone | count as orphan | 6 |
+| Lead loading speed | staging temp table + one UPDATE + one INSERT per file | 101 s to 13 s, same results (oracle tests) | executemany / leave as is | 7 |
+| `reset` | `reset --yes` drops our tables, keeps the key file | TRUNCATE is blocked by the append-only trigger | truncate / docs only | 7 |
+| Phone HMAC | `hmac.digest` one-shot | faster than `hmac.new` | none | 7 |
 
 ## AI usage notes (for `AI_USAGE.md`)
 
@@ -91,4 +94,6 @@ Copied into `SUBMISSION.md` at the end.
 - Step 4: Claude wrote `pii.py`, `db.py`, `store.py` and 19 tests. The user chose Postgres against Claude's SQLite recommendation; Docker Desktop was not running, so Claude launched it with the user's permission and started the compose Postgres. Claude's first draft of one test asserted `[None] * 3` results for a drop that has 4 files; spotted on review before the first run and fixed.
 - Step 5: Claude wrote `events.py`, the event part of `store.py`, and 34 tests. Three design questions were put to the user, who chose the recommended option each time. Where the AI was wrong: its first real-data test assumed every non-override event has a valid phone; the run showed 152 events with unparseable phones (the generator emits them on purpose). The code was right and the assertion was wrong; the finding is now documented and tested.
 - Step 6: Claude wrote `report.py`, `cli.py` and 32 tests, including an independent re-implementation over the raw files used as an oracle. Four design questions were put to the user, who chose the recommended option each time. Limitation to disclose: the oracle and the pipeline were written by the same AI from the same reading of the spec, so a shared misunderstanding would not be caught. A shell heredoc failed once while writing a test file (tooling, not logic); the file was re-created with the file tool.
+- Step 7: Claude measured the baseline, then (with the user's go-ahead) rewrote lead loading and added `reset`. Mistakes caught by running things: a first edit used a wrong string and was rejected; a `
+` inside a print string was written as a real newline and caused a SyntaxError that the test run exposed; the old crash-recovery test targeted a function that no longer exists and was rewritten so the crash happens after the leads were really inserted. Timings were measured by Claude on the user's machine (one run each).
 - Things still to understand line by line before the interview: the regexes in `parsers.py`.

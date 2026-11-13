@@ -52,7 +52,7 @@ class Pii:
         self._check = _derive(master, b"au/key-check/v1").hex()
 
     def phone_hash(self, canonical_phone: str) -> bytes:
-        return hmac.new(self._mac_key, canonical_phone.encode("ascii"), hashlib.sha256).digest()
+        return hmac.digest(self._mac_key, canonical_phone.encode("ascii"), "sha256")  # one-shot: faster than hmac.new
 
     @staticmethod
     def last4(canonical_phone: str) -> str:

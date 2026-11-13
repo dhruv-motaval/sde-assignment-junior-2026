@@ -128,3 +128,15 @@ def init_schema(conn: psycopg.Connection, pii: Pii) -> None:
             raise PiiKeyMismatch(
                 "this database was created with a different PII key; phone hashes would not match. "
                 "Use the original key (AU_PII_KEY or solution/.pii_key) or start from an empty database.")
+
+
+def reset_schema(conn: psycopg.Connection) -> None:
+    """Drop every table this pipeline owns (in the connection's schema) so a new seed starts clean.
+
+    Dropping is allowed on the append-only ledger: the triggers only guard UPDATE / DELETE /
+    TRUNCATE of rows. The next `ingest` recreates everything via init_schema.
+    """
+    with conn.transaction():
+        conn.execute("DROP TABLE IF EXISTS events, leads, rejections, ingested_files, malformed_lines, "
+                     "dispositions, meta CASCADE")
+        conn.execute("DROP FUNCTION IF EXISTS forbid_change()")

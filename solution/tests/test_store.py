@@ -128,23 +128,42 @@ def test_same_path_different_content_is_refused(db, tmp_path):
     assert count(db, "leads") == 1
 
 
-def test_failure_mid_file_rolls_back_the_whole_file(db, tmp_path, monkeypatch):
-    p = csv_file(tmp_path, "batch_001.csv", HEADER + "A,9876543210,P1,,,\nB,9876543211,P2,,,\nC,9876543212,P3,,,\n")
+def test_failure_after_writing_rolls_back_the_whole_file(db, tmp_path, monkeypatch):
+    p = csv_file(tmp_path, "batch_001.csv", HEADER + "A,9876543210,P1,,,\nB,9876543211,P2,,,\nBad,12,P3,,,\n")
     import solution.store as store
-    real, calls = store.upsert_lead, []
+    real = store._merge_stage
 
-    def boom(*a, **k):
-        calls.append(1)
-        if len(calls) == 3:
-            raise RuntimeError("crash")
-        return real(*a, **k)
+    def merge_then_crash(conn):
+        real(conn)                       # leads are really inserted inside the transaction ...
+        raise RuntimeError("crash")      # ... and then the process "dies"
 
-    monkeypatch.setattr(store, "upsert_lead", boom)
+    monkeypatch.setattr(store, "_merge_stage", merge_then_crash)
     with pytest.raises(RuntimeError):
         ingest(db, p)
-    assert (count(db, "leads"), count(db, "ingested_files")) == (0, 0)
-    monkeypatch.setattr(store, "upsert_lead", real)
-    assert ingest(db, p).new_leads == 3                   # a clean retry works
+    assert (count(db, "leads"), count(db, "rejections"), count(db, "ingested_files")) == (0, 0, 0)
+    monkeypatch.setattr(store, "_merge_stage", real)
+    r = ingest(db, p)                    # a clean retry works
+    assert (r.new_leads, r.rows_rejected) == (2, 1) and count(db, "leads") == 2
+
+
+def test_repeated_phone_inside_one_file_merges_in_file_order(db, tmp_path):
+    p = csv_file(tmp_path, "batch_001.csv", HEADER +
+                 "One,9876543210,P1,01-Dec-2026,100,hi\n"      # creates
+                 "Two,+91 98765 43210,P2,,,\n"                  # merges: name + ref overwritten only
+                 "Three,09876543210,,15/01/2027,junk,\n")       # rejected (no policy number): must not touch
+    r = ingest(db, p)
+    assert (r.new_leads, r.merged, r.rows_rejected) == (1, 1, 1)
+    ref, attrs, enc = db.execute("SELECT external_ref, attributes, pii FROM leads").fetchone()
+    assert ref == "P2" and PII.decrypt(enc["customer_name"]) == "Two"
+    assert attrs == {"policy_expiry": "2026-12-01", "premium_amount": "100.00", "preferred_language": "hi"}
+
+
+def test_existing_lead_gets_no_defaults_and_no_nulls_from_a_later_file(db, tmp_path):
+    ingest(db, csv_file(tmp_path, "batch_001.csv", HEADER + "A,9876543210,P1,01-Dec-2026,100,ta\n"))
+    ingest(db, csv_file(tmp_path, "batch_002.csv", HEADER + "A2,9876543210,P1,,,\n"))   # language empty
+    attrs, = db.execute("SELECT attributes FROM leads").fetchone()
+    assert attrs["preferred_language"] == "ta"           # the default 'en' must not overwrite it
+    assert attrs["policy_expiry"] == "2026-12-01"
 
 
 # --- oracle: DB must equal the in-memory LeadBook on the real data ----------------

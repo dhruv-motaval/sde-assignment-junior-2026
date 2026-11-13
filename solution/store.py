@@ -1,6 +1,7 @@
 """Persist leads (the database version of LeadBook) and events (the append-only ledger)."""
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 from dataclasses import dataclass
@@ -8,7 +9,6 @@ from datetime import date
 from pathlib import Path
 
 import psycopg
-from psycopg.types.json import Jsonb
 
 from .events import parse_event_line
 from .leads import FileResult, Schema, apply_defaults, discover_lead_files, evaluate_row, read_rows
@@ -43,15 +43,20 @@ def _text(v: object) -> str:
     return v.isoformat() if isinstance(v, date) else str(v)  # Decimal -> '1000.00'
 
 
+@functools.lru_cache(maxsize=None)
+def _field_map(schema: Schema) -> dict:
+    return {f.name: f for f in schema.fields}
+
+
 def _split(schema: Schema, values: dict[str, object], pii: Pii):
     """values -> (encrypted PII dict, external_ref, plain attributes dict); None values are dropped."""
     phone, ref = schema.phone_field.name, schema.reference_field.name
+    fields = _field_map(schema)
     enc, attrs = {}, {}
     for k, v in values.items():
         if v is None or k == phone:
             continue
-        f = next(x for x in schema.fields if x.name == k)
-        if f.pii:
+        if fields[k].pii:
             enc[k] = pii.encrypt(str(v))
         elif k != ref:
             attrs[k] = _text(v)
@@ -59,31 +64,45 @@ def _split(schema: Schema, values: dict[str, object], pii: Pii):
     return enc, (None if ref_val is None else str(ref_val)), attrs
 
 
-def upsert_lead(conn: psycopg.Connection, pii: Pii, schema: Schema, batch_id: str,
-                values: dict[str, object]) -> bool:
-    """True if a new lead was created, False if merged into an existing one.
+_STAGE_DDL = """CREATE TEMP TABLE _stage (
+    seq int, workflow_id text, phone_hash bytea, phone_last4 char(4), batch_id text, external_ref text,
+    pii_new jsonb, attrs_new jsonb, pii_upd jsonb, attrs_upd jsonb) ON COMMIT DROP"""
 
-    New lead: defaults fill still-null fields. Existing lead: only non-null incoming values
-    overwrite (jsonb `||` replaces matching keys; None values were dropped by _split), so a
-    later null never erases data.
+
+def _collapse(schema: Schema, pii: Pii, rows: dict[bytes, dict], batch_id: str) -> list[tuple]:
+    """One staged row per distinct phone in the file, merging repeated phones in file order
+    (first row creates, later rows overwrite only non-null values), like LeadBook does.
+
+    `*_new` is what a brand-new lead gets (defaults fill still-null fields); `*_upd` is what an
+    EXISTING lead receives (only the non-null incoming values, never defaults, never nulls).
     """
-    phone = values[schema.phone_field.name]
-    h = pii.phone_hash(phone)
-    enc, ref, attrs = _split(schema, apply_defaults(schema, values), pii)
-    created = conn.execute(
-        """INSERT INTO leads (workflow_id, phone_hash, phone_last4, batch_id, external_ref, pii, attributes)
-           VALUES (%s, %s, %s, %s, %s, %s, %s)
-           ON CONFLICT (workflow_id, phone_hash) DO NOTHING RETURNING lead_id""",
-        (schema.workflow_id, h, pii.last4(phone), batch_id, ref, Jsonb(enc), Jsonb(attrs))).fetchone()
-    if created:
-        return True
-    enc, ref, attrs = _split(schema, values, pii)  # raw values: no defaults on a merge
+    out = []
+    for seq, (h, raw) in enumerate(rows.items()):
+        enc, ref, attrs = _split(schema, apply_defaults(schema, raw), pii)   # PII is encrypted once per lead
+        enc_upd = {k: v for k, v in enc.items() if raw.get(k) is not None}
+        attrs_upd = {k: v for k, v in attrs.items() if raw.get(k) is not None}
+        phone = raw[schema.phone_field.name]
+        out.append((seq, schema.workflow_id, h, phone[-4:], batch_id, ref,
+                    json.dumps(enc), json.dumps(attrs), json.dumps(enc_upd), json.dumps(attrs_upd)))
+    return out
+
+
+def _merge_stage(conn: psycopg.Connection) -> int:
+    """Apply the staged rows; returns how many NEW leads were created.
+
+    Existing leads: update with the non-null incoming values (jsonb `||` replaces matching keys).
+    Missing leads: insert in file order. Update-then-insert means each lead is touched once.
+    """
     conn.execute(
-        """UPDATE leads SET external_ref = COALESCE(%s, external_ref),
-                            pii = pii || %s, attributes = attributes || %s
-           WHERE workflow_id = %s AND phone_hash = %s""",
-        (ref, Jsonb(enc), Jsonb(attrs), schema.workflow_id, h))
-    return False
+        """UPDATE leads l SET external_ref = COALESCE(s.external_ref, l.external_ref),
+                              pii = l.pii || s.pii_upd, attributes = l.attributes || s.attrs_upd
+           FROM _stage s WHERE l.workflow_id = s.workflow_id AND l.phone_hash = s.phone_hash""")
+    return conn.execute(
+        """INSERT INTO leads (workflow_id, phone_hash, phone_last4, batch_id, external_ref, pii, attributes)
+           SELECT s.workflow_id, s.phone_hash, s.phone_last4, s.batch_id, s.external_ref, s.pii_new, s.attrs_new
+           FROM _stage s
+           WHERE NOT EXISTS (SELECT 1 FROM leads l WHERE l.workflow_id = s.workflow_id AND l.phone_hash = s.phone_hash)
+           ORDER BY s.seq""").rowcount
 
 
 def ingest_lead_file(conn: psycopg.Connection, pii: Pii, schema: Schema, path: Path,
@@ -91,26 +110,42 @@ def ingest_lead_file(conn: psycopg.Connection, pii: Pii, schema: Schema, path: P
     """Ingest one CSV atomically. Returns None if this exact file was already ingested.
 
     Raises FileContentChanged if the same (drop, path) is seen again with different content.
+    Parsing and merging repeated phones happen in memory first (no database traffic per row);
+    then ONE transaction bulk-loads a staging table and merges it into `leads`.
     """
     path = Path(path)
     digest = sha256_file(path)
     if _already_ingested(conn, drop_name, rel_path, digest):
         return None
     res = FileResult(schema.workflow_id, path.stem)
-    with conn.transaction():  # all rows + the ingested_files row commit together, or none do
-        for n, raw in read_rows(path, schema):
-            res.rows_total += 1
-            reason, values, warn = evaluate_row(schema, raw)
-            if reason:
-                res.rejections.append((n, reason))
-                conn.execute("INSERT INTO rejections VALUES (%s, %s, %s, %s)",
-                             (res.workflow_id, res.batch_id, n, reason))
-                continue
-            res.field_warnings += warn
-            if upsert_lead(conn, pii, schema, res.batch_id, values):
-                res.new_leads += 1
-            else:
-                res.merged += 1
+    phone_name = schema.phone_field.name
+    rows: dict[bytes, dict] = {}
+    valid = 0
+    for n, raw in read_rows(path, schema):
+        res.rows_total += 1
+        reason, values, warn = evaluate_row(schema, raw)
+        if reason:
+            res.rejections.append((n, reason))
+            continue
+        res.field_warnings += warn
+        valid += 1
+        h = pii.phone_hash(values[phone_name])
+        if h not in rows:
+            rows[h] = dict(values)
+        else:
+            rows[h].update({k: v for k, v in values.items() if v is not None})
+    staged = _collapse(schema, pii, rows, res.batch_id)
+
+    with conn.transaction():  # rejections + leads + the ingested_files row commit together, or none do
+        with conn.cursor() as cur:
+            cur.executemany("INSERT INTO rejections VALUES (%s, %s, %s, %s)",
+                            [(res.workflow_id, res.batch_id, n, r) for n, r in res.rejections])
+            cur.execute(_STAGE_DDL)
+            with cur.copy("COPY _stage FROM STDIN") as cp:
+                for row in staged:
+                    cp.write_row(row)
+        res.new_leads = _merge_stage(conn)
+        res.merged = valid - res.new_leads   # every valid row that did not create a lead merged into one
         conn.execute(
             """INSERT INTO ingested_files (drop_name, path, kind, sha256, workflow_id, batch_id,
                    rows_total, rows_rejected, rows_merged, new_leads, field_warnings)
