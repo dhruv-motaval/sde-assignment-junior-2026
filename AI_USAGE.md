@@ -34,7 +34,9 @@ I did **not** write the code by hand. What I did:
     leave out batches with no leads;
   - use a staging-table bulk merge for the speed-up; `reset --yes` drops tables.
 - Decided to keep the GitHub repo private and to be asked about opinions at decision points.
-- I have **not** designed the schema, written the SQL, or reviewed the code line by line myself yet.
+- I did not design the schema or write the SQL myself; the agent did, and I chose between the options it gave me.
+- I made one file to understand the code whenever needed: `solution/docs/CODE_GUIDE.md` (what each file does, short
+  answers to the design questions, and where to edit for a typical change).
 
 ## Where the AI was wrong or unhelpful
 Found by running things; each was fixed:
@@ -65,6 +67,5 @@ Found by running things; each was fixed:
   (`rows = rejected + merged + new leads`; `event lines = malformed + duplicates + stored`) at both small and large scale.
 - **Behavioural checks:** re-ingest changes nothing; loading in a different order gives byte-identical reports; a simulated
   crash mid-file rolls back; no plaintext PII anywhere in the database or output files.
-- **What I have NOT done:** I have not yet read the code line by line. `solution/docs/INTERVIEW_PREP.md` is a reading plan and a
-  set of likely live changes that I intend to work through before the interview so I can walk through and change the code
-  myself.
+- **What I have NOT done:** a line-by-line review of the code. To understand it whenever needed I use one file,
+  `solution/docs/CODE_GUIDE.md`.

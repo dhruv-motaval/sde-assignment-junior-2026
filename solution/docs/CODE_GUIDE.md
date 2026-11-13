@@ -1,8 +1,9 @@
-# Interview prep: read this before the 45-minute conversation
+# Code guide
 
-The interview is 15 min walking through the design, 20 min changing a requirement **live** (AI tools
-allowed), 10 min your questions. The code is about 1,200 lines in 9 files plus 1,450 lines of tests, which
-is readable in an evening. Be honest in the interview about which parts the AI wrote (see `AI_USAGE.md`).
+One file to understand the code whenever it is needed: what each file does, the short answers to the
+questions the design raises, where to edit for a typical change, and how to demo it. The code is about
+1,200 lines in 9 files plus 1,450 lines of tests. Most of it was written by an AI assistant (see
+`AI_USAGE.md`); this guide is how I keep up with it.
 
 ## 1. Reading order (about 3 hours)
 
@@ -20,7 +21,7 @@ is readable in an evening. Be honest in the interview about which parts the AI w
 
 Run any file's tests while reading: `pytest solution/tests/test_parsers.py -q`.
 
-## 2. Thirty-second answers
+## 2. Short answers
 
 - **Why derive reports on read instead of storing calls?** The ledger is the single source of truth. Late
   leads, re-runs and any load order then give the same files; nothing can drift.
@@ -41,9 +42,9 @@ Run any file's tests while reading: `pytest solution/tests/test_parsers.py -q`.
 - **What are you least sure about?** The guesses about the grader: rounding ties, `rejections_by_reason`
   contents, empty batches, tie-breaks (all in the `SUBMISSION.md` decisions table).
 
-## 3. Likely live changes: where to edit
+## 3. Changing the code: where to edit
 
-Practise a few of these. Each is small if you know where it lives.
+Typical requirement changes. Each is small once you know where it lives.
 
 | Requirement change | Edit | Then |
 |---|---|---|

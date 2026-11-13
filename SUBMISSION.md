@@ -5,7 +5,8 @@
 - **Assignment chosen:** A (Data): Interaction Ledger & Reporting Pipeline
 - **Time spent (honest estimate):** about 1.5 h of my own time directing the work and answering design
   questions. Nearly all code, tests and docs were written by an AI assistant (Claude Code); see
-  [`AI_USAGE.md`](AI_USAGE.md). I have not yet read the code line by line.
+  [`AI_USAGE.md`](AI_USAGE.md). I keep one file to understand the code whenever needed:
+  [`solution/docs/CODE_GUIDE.md`](solution/docs/CODE_GUIDE.md).
 
 ## How to run
 Needs Python 3.11+ (developed and tested on 3.14.4) and Docker (for PostgreSQL 16). From a clean clone:
@@ -187,8 +188,8 @@ date, partition `events` by month, move the PII key to a KMS with key ids for ro
 parallel ingest. Full note: [`solution/docs/07-speed-reset-and-production.md`](solution/docs/07-speed-reset-and-production.md).
 
 ## If I had another day
-1. Read and be able to explain every module (I have not yet), then try the live-change scenarios in
-   [`solution/docs/INTERVIEW_PREP.md`](solution/docs/INTERVIEW_PREP.md).
+1. Work through every module with [`solution/docs/CODE_GUIDE.md`](solution/docs/CODE_GUIDE.md) (the one file that
+   explains the code and where to change it) and try its "where to edit" changes.
 2. Re-run the load-order and idempotency checks at large scale, and on Python 3.11.
 3. Move report aggregation into SQL (incremental by date) so it scales past memory.
 4. Speed up event loading (parallel workers per file), now the slowest stage.
