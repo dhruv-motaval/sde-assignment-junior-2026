@@ -37,9 +37,10 @@ Each step doc in `docs/NN-name.md` has these sections:
 | 5 | 2026-11-13 | Event ingestion: parse, malformed/duplicate handling, COPY into the ledger, idempotent per file (34 new tests) | [05](docs/05-event-ingestion.md) | done |
 | 6 | 2026-11-13 | Reports: derive calls / effective disposition / buckets, five output files, CLI (32 new tests incl. independent oracle) | [06](docs/06-reports.md) | done |
 | 7 | 2026-11-13 | Large-scale run: 152 s to 66.8 s via staging-table lead loading; `reset --yes`; production note (183 tests) | [07](docs/07-speed-reset-and-production.md) | done |
-| 8 | | Fill in `SUBMISSION.md` and `AI_USAGE.md`, README run commands, reviewer access | | next |
+| 8 | 2026-11-13 | Fresh-clone verification (seed 7), `SUBMISSION.md`, `AI_USAGE.md`, interview prep | [INTERVIEW_PREP](docs/INTERVIEW_PREP.md) | done |
+| - | | Reviewer access + emailing the link (user does this) | - | pending |
 
-**Time spent so far (fill in honestly, it goes in `SUBMISSION.md`):** _____ h
+**Time spent (user's own estimate, in `SUBMISSION.md`):** about 1.5 h of the user's own time; code written by AI.
 
 ## Decisions the spec did not make for us
 
@@ -96,4 +97,5 @@ Copied into `SUBMISSION.md` at the end.
 - Step 6: Claude wrote `report.py`, `cli.py` and 32 tests, including an independent re-implementation over the raw files used as an oracle. Four design questions were put to the user, who chose the recommended option each time. Limitation to disclose: the oracle and the pipeline were written by the same AI from the same reading of the spec, so a shared misunderstanding would not be caught. A shell heredoc failed once while writing a test file (tooling, not logic); the file was re-created with the file tool.
 - Step 7: Claude measured the baseline, then (with the user's go-ahead) rewrote lead loading and added `reset`. Mistakes caught by running things: a first edit used a wrong string and was rejected; a `
 ` inside a print string was written as a real newline and caused a SyntaxError that the test run exposed; the old crash-recovery test targeted a function that no longer exists and was rewritten so the crash happens after the leads were really inserted. Timings were measured by Claude on the user's machine (one run each).
+- Step 8: Claude ran the documented commands from a fresh clone with seed 7 and found two real problems (a seed-specific test number and a missing `.pytest_cache` parent for pytest's temp dir), fixed both, and re-verified (183 passed). The user said they have not read the code in detail, so `AI_USAGE.md` says so plainly and `docs/INTERVIEW_PREP.md` was written as a reading plan.
 - Things still to understand line by line before the interview: the regexes in `parsers.py`.
