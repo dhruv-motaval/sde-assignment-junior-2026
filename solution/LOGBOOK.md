@@ -17,13 +17,16 @@ Each step doc in `docs/NN-name.md` has these sections:
 
 ## GitHub
 
-- Private repo: https://github.com/dhruv-motaval/sde-assignment-junior-2026 (`origin`).
+- Repo: https://github.com/dhruv-motaval/sde-assignment-junior-2026 (`origin`). Private while working (the README asks
+  for that); **made public on 2026-11-13 at the user's choice** because the submission form asks for a publicly
+  accessible link. It was scanned first: no secrets, keys, data or PII in files or history.
   The assignment's own repo is kept as the `upstream` remote and is never pushed to.
 - Routine: at the end of every step, update this logbook and the step doc, then commit and
   push to `origin main`. One commit per step, message says which step.
 - Never commit `data/`, `data_large/`, `.env`, databases or the PII key file (`.gitignore`
   covers the first four; the key file name will be added when step 4 creates it).
-- Before submitting: give the reviewers read access (see the main README) and email the link.
+- Before submitting: paste the repo link into the submission form (it must be publicly accessible). The README's
+  reviewer-access / email step is only needed if they still ask for it.
 
 ## Log
 

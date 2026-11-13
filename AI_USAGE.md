@@ -16,7 +16,7 @@ Almost everything, in a conversation with the agent, one part at a time:
   derivation and the five output files, the command line, the bulk-loading speed-up, and `reset`.
 - **Writing the tests** (183), including an independent re-implementation over the raw files used as an oracle.
 - Benchmarking on the large dataset, starting Docker/Postgres, running a fresh-clone check, and the git commits and
-  pushes to my private repo.
+  pushes to my GitHub repo.
 - Writing the step-by-step docs in `solution/docs/`, `solution/LOGBOOK.md`, this file and `SUBMISSION.md`.
 
 ## What I wrote or decided myself
@@ -33,7 +33,8 @@ I did **not** write the code by hand. What I did:
   - compute reports as "SQL fetches, Python decides"; tie goes to the higher `event_id`; Python `.4f` rounding;
     leave out batches with no leads;
   - use a staging-table bulk merge for the speed-up; `reset --yes` drops tables.
-- Decided to keep the GitHub repo private and to be asked about opinions at decision points.
+- Kept the GitHub repo private while working (the assignment README asks for that), then made it public because the
+  submission form asks for a publicly accessible link. Also decided to be asked about opinions at decision points.
 - I did not design the schema or write the SQL myself; the agent did, and I chose between the options it gave me.
 - I made one file to understand the code whenever needed: `solution/docs/CODE_GUIDE.md` (what each file does, short
   answers to the design questions, and where to edit for a typical change).
