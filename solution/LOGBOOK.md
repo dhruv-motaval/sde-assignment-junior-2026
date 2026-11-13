@@ -33,8 +33,8 @@ Each step doc in `docs/NN-name.md` has these sections:
 | 2 | 2026-11-13 | Pure value parsers (header, phone, date, decimal, enum, timestamp) + 72 unit tests | [02](docs/02-value-parsers.md) | done |
 | - | 2026-11-13 | Created private GitHub repo and pushed steps 1-2 | - | done |
 | 3 | 2026-11-13 | Lead ingestion in memory: CSV reading, header mapping, validation, rejections, merging (22 tests) | [03](docs/03-lead-ingestion.md) | done |
-| 4 | | Database schema, PII protection (HMAC phone, encrypted name), append-only ledger | | next |
-| 5 | | Event ingestion: malformed / duplicate handling, idempotent file tracking | | |
+| 4 | 2026-11-13 | PostgreSQL schema, PII protection (HMAC phone, Fernet name), append-only ledger, leads saved to DB (19 new tests) | [04](docs/04-database-and-pii.md) | done |
+| 5 | | Event ingestion: malformed / duplicate handling, idempotent file tracking | | next |
 | 6 | | Report derivation: calls, effective disposition, buckets, five output files | | |
 | 7 | | Idempotency + drop-split equivalence tests; large-scale timing | | |
 | 8 | | Fill in `SUBMISSION.md` and `AI_USAGE.md` | | |
@@ -56,6 +56,12 @@ Copied into `SUBMISSION.md` at the end.
 | Folder with no schema | skip with warning | one bad folder must not stop the drop | fail ingest | 3 |
 | Defaults | applied on save | same result as at the end; stored data is complete | apply at read | 3 |
 | Warnings on merged rows | counted | merged rows are valid, not rejected | count only new leads | 3 |
+| Database | PostgreSQL (user's choice over SQLite) | closer to production; user preference | SQLite (zero setup for graders) | 4 |
+| Customer name | Fernet-encrypted | reversible, record stays complete | keyed hash / not stored | 4 |
+| Secret key | env var, else auto-created git-ignored file | works from a clean clone | env var required | 4 |
+| Full phone | not stored (HMAC + last 4 only) | reports only need masked phone | store encrypted too | 4 |
+| Workflow-specific fields | `attributes jsonb` | one table, SQL merge with `||` | table per workflow / EAV | 4 |
+| Same file path, new content | refuse (`FileContentChanged`) | avoid silent double counting | re-ingest anyway | 4 |
 
 ## AI usage notes (for `AI_USAGE.md`)
 
@@ -68,4 +74,5 @@ Copied into `SUBMISSION.md` at the end.
 - **How it was verified:** 72 unit tests, plus running every parser over every cell of the
   generated CSVs to confirm valid/invalid counts look plausible (see step 2 doc).
 - Step 3: Claude wrote `leads.py` and its tests. Four open design questions were put to the user, who chose the recommended option for all four. Environment issue: pytest temp dir `PermissionError`, fixed with `--basetemp` in `pytest.ini`.
+- Step 4: Claude wrote `pii.py`, `db.py`, `store.py` and 19 tests. The user chose Postgres against Claude's SQLite recommendation; Docker Desktop was not running, so Claude launched it with the user's permission and started the compose Postgres. Claude's first draft of one test asserted `[None] * 3` results for a drop that has 4 files; spotted on review before the first run and fixed.
 - Things still to understand line by line before the interview: the regexes in `parsers.py`.
